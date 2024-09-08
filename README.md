@@ -1,0 +1,2 @@
+# Aplikacja_webowa_do_zglaszania_szkod_gorniczych
+Projekt realizowany w ramach pracy inżynierskiej
