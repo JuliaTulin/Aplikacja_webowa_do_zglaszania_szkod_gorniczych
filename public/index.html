@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktywna Mapa</title>
+    <!-- Dodaj Leaflet CSS i JavaScript -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="mapa.css">
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        /* Ustawienia stylu kontenerów */
+        body {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px;
+        }
+        #map {
+            width: 60%;
+            height: 900px;
+            margin-top: 40px;
+        }
+        #form-container {
+            width: 30%;
+            margin-top: 40px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        /* Styl formularza */
+        #form-container h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div id="form-container">
+        <h2>Formularz kontaktowy</h2>
+        <form id="pointForm">
+            <label for="first-name">Imię:</label>
+            <input type="text" id="first-name" name="imie" required>
+
+            <label for="last-name">Nazwisko:</label>
+            <input type="text" id="last-name" name="nazwisko" required>
+
+            <label for="email">Adres email:</label>
+            <input type="email" id="email" name="email" required>
+
+            <label for="note">Opis:</label>
+            <textarea id="note" name="opis" rows="4" required></textarea>
+
+            <!-- Widoczne pola na współrzędne -->
+            <label for="latitude">Szerokość geograficzna:</label>
+            <input type="text" id="latitude" name="latitude" readonly required>
+
+            <label for="longitude">Długość geograficzna:</label>
+            <input type="text" id="longitude" name="longitude" readonly required>
+
+            <button type="button" onclick="submitForm()">Wyślij</button>
+        </form>
+    </div>
+
+    <script>
+        var map = L.map('map');
+        var marker;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        var center = [50.0804724, 19.1614253]; // Współrzędne centrum
+        var bufferRadius = 11 * 1000;
+        var bounds = L.latLng(center).toBounds(bufferRadius);
+        map.fitBounds(bounds);
+
+        // Dodanie funkcji kliknięcia na mapie
+        map.on('click', function(e) {
+            var lat = e.latlng.lat;
+            var lng = e.latlng.lng;
+
+            // Sprawdź, czy marker już istnieje, i usuń go, jeśli tak
+            if (marker) {
+                map.removeLayer(marker);
+            }
+
+            // Utwórz nowy marker na mapie
+            marker = L.marker([lat, lng]).addTo(map);
+
+            // Wstaw współrzędne do widocznych pól formularza
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+        });
+
+        // Funkcja do obsługi wysyłania formularza
+        async function submitForm() {
+            const firstName = document.getElementById('first-name').value;
+            const lastName = document.getElementById('last-name').value;
+            const email = document.getElementById('email').value;
+            const note = document.getElementById('note').value;
+            const latitude = document.getElementById('latitude').value;
+            const longitude = document.getElementById('longitude').value;
+
+            if (!firstName || !lastName || !email || !note || !latitude || !longitude) {
+                alert('Proszę wypełnić wszystkie pola formularza!');
+                return; // Przerywamy dalsze działanie, jeśli jakieś pole jest puste
+            }
+
+
+            const data = {
+                imie: firstName,
+                nazwisko: lastName,
+                email: email,
+                opis: note,        
+                latitude: parseFloat(latitude),       
+                longitude: parseFloat(longitude)
+            };
+
+
+            try {
+                const response = await fetch('/api/points', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    alert('Punkt został zapisany!');
+                    document.getElementById('pointForm').reset();
+                    if (marker) map.removeLayer(marker); // Usuń marker po zapisaniu
+                } else {
+                    const errorData = await response.json();
+                    alert('Błąd podczas zapisu punktu: ' + errorData.message);
+                }
+            } catch (error) {
+                alert('Wystąpił problem podczas zapisu punktu: ' + error);
+            }
+        }
+
+        // Funkcja, która ładuje plik GeoJSON i dodaje go jako warstwę na mapie
+        async function loadGeoJsonLayer() {
+            try {
+                const response = await fetch('kopalnia/kopalnia.geojson');
+                if (!response.ok) throw new Error(`Błąd HTTP: ${response.status}`);
+                const geojsonData = await response.json();
+
+                // Dodaj warstwę GeoJSON do mapy
+                const geoJsonLayer = L.geoJSON(geojsonData).addTo(map);
+                map.fitBounds(geoJsonLayer.getBounds());
+            } catch (error) {
+                console.error("Błąd podczas wczytywania pliku GeoJSON:", error);
+                alert('Nie udało się wczytać pliku GeoJSON.');
+            }
+        }
+
+
+        // Wywołaj funkcję ładującą po zainicjowaniu mapy
+        loadGeoJsonLayer();
+    </script>
+</body>
+</html>
