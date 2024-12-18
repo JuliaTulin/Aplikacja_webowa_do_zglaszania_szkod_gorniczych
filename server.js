@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 const bodyParser = require('body-parser');
 
 const app = express();
-const PORT = 3000;
+const PORT = 4000;
 
 app.use(bodyParser.json());
 

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel użytkownika</title>
+    <style>
+        /* Styl ogólny strony */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+        }
+
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-info {
+            margin-bottom: 20px;
+        }
+
+        .user-info h2 {
+            margin: 0 0 10px;
+            color: #333;
+        }
+
+        .user-info p {
+            margin: 5px 0;
+            color: #555;
+        }
+
+        .points-list {
+            margin-top: 20px;
+        }
+
+        .points-list h2 {
+            margin-bottom: 10px;
+        }
+
+        .point {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .point p {
+            margin: 5px 0;
+            color: #555;
+        }
+
+        .logout-button {
+            display: inline-block;
+            padding: 10px 20px;
+            color: white;
+            background-color: #d9534f;
+            border: none;
+            border-radius: 5px;
+            text-align: center;
+            text-decoration: none;
+            font-size: 16px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+
+        .logout-button:hover {
+            background-color: #c9302c;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Witaj w Panelu użytkownika</h1>
+    </header>
+
+    <div class="container">
+        <!-- Sekcja informacji o użytkowniku -->
+        <div class="info-o-użytkowniku">
+            <h2>Twoje dane</h2>
+            <p><strong>Imię:</strong> <span id="imie"></span></p>
+            <p><strong>Nazwisko:</strong> <span id="nazwisko"></span></p>
+            <p><strong>Email:</strong> <span id="email"></span></p>
+        </div>
+
+        <!-- Przycisk wylogowania -->
+        <button id="logout-btn" class="logout-button" onclick="logout()">Wyloguj</button>
+    </div>
+
+    <script>
+        function startAplikacji() {
+            fetch('/api/user', { credentials: 'include' }) // Wysyłamy zapytanie z ciasteczkami sesji
+                .then(response => {
+                    if (response.status === 401) {
+                        // Jeśli brak sesji, przekieruj na stronę główną
+                        alert('Brak sesji. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania danych użytkownika');
+                    }
+                    return response.json();
+                })
+                .then(userData => {
+                    // Wyświetl dane użytkownika w odpowiednich elementach HTML
+                    document.getElementById('imie').textContent = userData.imie || '';
+                    document.getElementById('nazwisko').textContent = userData.nazwisko || '';
+                    document.getElementById('email').textContent = userData.email || '';
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+        // Wylogowanie
+        function logout() {
+            fetch('/api/logout', { method: 'POST', credentials: 'include' }) // Wylogowanie poprzez sesję
+                .then(response => {
+                    if (response.ok) {
+                        window.location.href = 'http://localhost:3000/';
+                    }
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                    alert('Błąd podczas wylogowania.');
+                });
+        }
+
+        // Sprawdź stan logowania użytkownika po załadowaniu strony
+        document.addEventListener('DOMContentLoaded', startAplikacji);
+    </script>
+</body>
+</html>

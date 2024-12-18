@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktywna Mapa</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="mapa.css">
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px;
+        }
+        #map {
+            width: 70%;
+            height: 900px;
+            margin-top: 40px;
+        }
+
+
+
+        #form-container {
+            width: 25%;
+            background-color: #f9f9f9;
+        }
+        #form-container h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #return-location-btn {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        #return-location-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #user-panel-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+        #user-panel-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #auth-btn {
+            position: absolute;
+            top: 10px;
+            right: 220px; /* Obok przycisku Panel użytkownika */
+            width: 200px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        #auth-btn:hover {
+            background-color: #218838;
+        }
+
+    </style>
+</head>
+<body>
+    <button id="user-panel-btn" onclick="goToUserPanel()">Panel użytkownika</button>
+    <div id="map"></div>
+
+    <div id="form-container">
+        <h2>Formularz kontaktowy</h2>
+        <form id="pointForm">
+            <label for="first-name">Imię:</label>
+            <input type="text" id="first-name" name="imie" required>
+    
+            <label for="last-name">Nazwisko:</label>
+            <input type="text" id="last-name" name="nazwisko" required>
+    
+            <label for="email">Adres email:</label>
+            <input type="email" id="email" name="email" required>
+    
+            <label for="note">Opis:</label>
+            <textarea id="note" name="opis" rows="4" required></textarea>
+    
+            <label for="latitude">Szerokość geograficzna:</label>
+            <input type="text" id="latitude" name="latitude" readonly required>
+    
+            <label for="longitude">Długość geograficzna:</label>
+            <input type="text" id="longitude" name="longitude" readonly required>
+    
+            <button type="button" onclick="submitForm()">Wyślij</button>
+        </form>
+        <!-- Przycisk powrotu do lokalizacji użytkownika -->
+        <button id="return-location-btn" onclick="returnToUserLocation()">Powrót do mojej lokalizacji</button>
+    </div>
+    
+    <script>
+
+        async function getUserData() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const userData = await response.json();
+                    document.getElementById('first-name').value = userData.imie || '';
+                    document.getElementById('last-name').value = userData.nazwisko || '';
+                    document.getElementById('email').value = userData.email || '';
+                } else {
+                    alert('Nie można pobrać danych użytkownika.');
+                }
+            } catch (error) {
+                console.error('Błąd podczas pobierania danych użytkownika:', error);
+            }
+        }
+
+        function goToUserPanel() {
+            if (isUserLoggedIn()) {
+                window.location.href = '/user_panel.html';
+            } else {
+                alert('Musisz być zalogowany, aby uzyskać dostęp do panelu użytkownika.');
+            }
+        }
+        var map = L.map('map');
+        var marker;
+        var userLat, userLng;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        var center = [50.0804724, 19.1614253]; // Współrzędne centrum
+        var bufferRadius = 11 * 1000;
+        var bounds = L.latLng(center).toBounds(bufferRadius);
+        map.fitBounds(bounds);
+
+
+        // Sprawdź, czy użytkownik jest zalogowany
+        async function isUserLoggedIn() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include' // Ważne! Przekazuje ciasteczka w żądaniu
+                });
+                if (response.ok) {
+                    return true; // Użytkownik jest zalogowany
+                } else {
+                    return false; // Brak sesji lub sesja wygasła
+                }
+            } catch (error) {
+                console.error('Błąd sprawdzania sesji:', error);
+                return false; // Zakładamy, że użytkownik nie jest zalogowany w przypadku błędu
+            }
+        }
+
+
+        // Funkcja inicjalizacji
+        async function initializeApp() {
+            const isLoggedIn = await isUserLoggedIn();
+            if (isLoggedIn) {
+                document.getElementById('form-container').style.display = 'block';
+                await getUserData();
+            } else {
+                document.getElementById('form-container').style.display = 'none';
+            }
+        }
+
+
+        function onLoginSuccess() {
+            initializeApp(); // Przeładuj widok
+        }
+
+
+        async function login(email, password) {
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include', // Przekazuje ciasteczka w żądaniu
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (response.ok) {
+                    alert('Zalogowano pomyślnie!');
+                    onLoginSuccess(); // Zaktualizuj interfejs
+                } else {
+                    alert('Nieprawidłowe dane logowania.');
+                }
+            } catch (error) {
+                console.error('Błąd logowania:', error);
+                alert('Wystąpił problem podczas logowania.');
+            }
+        }
+
+
+
+    
+
+
+
+
+
+
+
+        // Funkcja do pobierania lokalizacji użytkownika
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    userLat = position.coords.latitude;
+                    userLng = position.coords.longitude;
+
+                    // Ustawienie współrzędnych w formularzu
+                    document.getElementById('latitude').value = userLat;
+                    document.getElementById('longitude').value = userLng;
+
+                    // Ustawienie mapy na lokalizację użytkownika
+                    map.setView([userLat, userLng], 13);
+
+                    // Dodanie markera w lokalizacji użytkownika
+                    if (marker) {
+                        map.removeLayer(marker);
+                    }
+                    marker = L.marker([userLat, userLng]).addTo(map);
+
+                }, function(error) {
+                    alert('Nie udało się pobrać lokalizacji. Wykorzystuję domyślną lokalizację.');
+                    map.setView(center, 13); // W przypadku błędu, ustawienie domyślnej lokalizacji
+                });
+            } else {
+                alert('Geolokalizacja nie jest wspierana w tej przeglądarce.');
+                map.setView(center, 13); // W przypadku braku geolokalizacji
+            }
+        }
+
+        // Funkcja powrotu do lokalizacji użytkownika
+        function returnToUserLocation() {
+            if (userLat && userLng) {
+                map.setView([userLat, userLng], 13);
+                if (marker) {
+                    map.removeLayer(marker);
+                }
+                marker = L.marker([userLat, userLng]).addTo(map);
+            } else {
+                alert('Nie udało się pobrać Twojej lokalizacji. Używam domyślnej lokalizacji.');
+                map.setView(center, 13); // Powrót do domyślnej lokalizacji
+            }
+        }
+
+        // Dodanie funkcji kliknięcia na mapie
+        map.on('click', function(e) {
+            var lat = e.latlng.lat;
+            var lng = e.latlng.lng;
+
+            // Sprawdź, czy marker już istnieje, i usuń go, jeśli tak
+            if (marker) {
+                map.removeLayer(marker);
+            }
+
+            // Utwórz nowy marker na mapie
+            marker = L.marker([lat, lng]).addTo(map);
+
+            // Wstaw współrzędne do widocznych pól formularza
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+        });
+
+        // Funkcja do obsługi wysyłania formularza
+        async function submitForm() {
+            const firstName = document.getElementById('first-name').value;
+            const lastName = document.getElementById('last-name').value;
+            const email = document.getElementById('email').value;
+            const note = document.getElementById('note').value;
+            const latitude = parseFloat(document.getElementById('latitude').value);
+            const longitude = parseFloat(document.getElementById('longitude').value);
+
+            if (!firstName || !lastName || !email || !note || !latitude || !longitude) {
+                alert('Proszę wypełnić wszystkie pola formularza!');
+                return; // Przerywamy dalsze działanie, jeśli jakieś pole jest puste
+            }
+
+            // Tworzenie geometrii na podstawie współrzędnych
+            const geometry = {
+                type: 'Point',
+                coordinates: [longitude, latitude] // Używamy lat i lng do stworzenia geometrii Point
+            };
+
+            const data = {
+                imie: firstName,
+                nazwisko: lastName,
+                email: email,
+                opis: note,        
+                latitude: parseFloat(latitude),       
+                longitude: parseFloat(longitude),
+                geometry: geometry
+            };
+
+            try {
+                const response = await fetch('/api/points', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) {
+                    alert('Zgłoszenie zostało wysłane!');
+                    document.getElementById('pointForm').reset();
+                    if (marker) map.removeLayer(marker); // Usuń marker po zapisaniu
+                } else {
+                    const errorData = await response.json();
+                    alert('Błąd wysyłania formularza! ' + errorData.message);
+                }
+            } catch (error) {
+                    alert('Błąd wysyłania formularza! ' + errorData.message);
+                alert('Błąd wysyłania formularza! ' + error);
+            }
+        }
+
+        // Funkcja do generowania kolorów na podstawie właściwości feature
+        function getColor(feature) {
+            // Przykład: kolor na podstawie ID lub innej właściwości
+            const colors = ['#e6194b', '#808080', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+            const id = feature.properties.id || 0; // Właściwość `id` (lub inna unikalna cecha)
+            return colors[id % colors.length]; // Przypisz kolor z tablicy na podstawie modulo
+        }
+
+        
+        // Funkcja do obsługi każdego elementu GeoJSON
+        function onEachFeature(feature, layer) {
+            if (feature.properties && feature.properties.nazwa) {
+                // Dodaj dymek z nazwą kopalni
+                layer.bindTooltip(feature.properties.nazwa, {
+                    permanent: false,  // Tymczasowy dymek
+                    direction: "auto", // Automatyczne dopasowanie pozycji
+                    className: 'kopalnia-tooltip' // Opcjonalna klasa CSS
+                });
+            }
+        }
+
+        // Funkcja, która ładuje plik GeoJSON i dodaje go jako warstwę na mapie
+        async function loadGeoJsonLayer() {
+            try {
+                const response = await fetch('kopalnia/kopalnia_wszystkie.geojson');
+                if (!response.ok) throw new Error(`Błąd HTTP: ${response.status}`);
+                const geojsonData = await response.json();
+
+                // Dodaj warstwę GeoJSON do mapy z obsługą zdarzeń
+                const geoJsonLayer = L.geoJSON(geojsonData, {
+                    onEachFeature: onEachFeature, // Obsługa każdego elementu
+                    style: function (feature) {
+                        return {
+                            color: '#000000', // Obramowanie poligonów
+                            weight: 1,
+                            fillColor: getColor(feature), // Wypełnienie poligonu
+                            fillOpacity: 0.5
+                        };
+                    }
+                }).addTo(map);
+
+                map.fitBounds(geoJsonLayer.getBounds());
+            } catch (error) {
+                console.error("Błąd podczas wczytywania pliku GeoJSON:", error);
+                alert('Nie udało się wczytać pliku GeoJSON.');
+            }
+        }
+
+        // Wywołaj funkcję ładującą po zainicjowaniu mapy
+        loadGeoJsonLayer();
+
+        // Pobierz lokalizację użytkownika na początku
+        getUserLocation();
+    </script>
+</body>
+</html>
