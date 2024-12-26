@@ -9,12 +9,12 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
-            background-color: #f4f4f9;
+            padding: 20px;
+            background-color: #ccc;
         }
 
         header {
-            background-color: #007bff;
+            background-color: #108f34;
             color: white;
             padding: 20px;
             text-align: center;
@@ -37,8 +37,9 @@
             margin-bottom: 20px;
         }
 
-        .user-info h2 {
-            margin: 0 0 10px;
+        h2 {
+            text-align: center;
+            margin-top: 50px;
             color: #333;
         }
 
@@ -85,17 +86,37 @@
         .logout-button:hover {
             background-color: #c9302c;
         }
+
+        table {
+            border-collapse: collapse;
+            max-width: 1500px;
+            margin-top: 20px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #108f34;
+            color: white;
+        }
+
     </style>
 </head>
 <body>
     <header>
-        <h1>Witaj w Panelu użytkownika</h1>
+        <h1 id="panel-title">Witaj w Panelu użytkownika</h1>
     </header>
 
     <div class="container">
         <!-- Sekcja informacji o użytkowniku -->
         <div class="info-o-użytkowniku">
-            <h2>Twoje dane</h2>
             <p><strong>Imię:</strong> <span id="imie"></span></p>
             <p><strong>Nazwisko:</strong> <span id="nazwisko"></span></p>
             <p><strong>Email:</strong> <span id="email"></span></p>
@@ -104,6 +125,29 @@
         <!-- Przycisk wylogowania -->
         <button id="logout-btn" class="logout-button" onclick="logout()">Wyloguj</button>
     </div>
+
+    <!-- Sekcja szkód -->
+    <div class="points-list">
+        <h2>Twoje zgłoszenia</h2>
+        <table id="szkody-table" border="1" style="width:100%; border-collapse: collapse;">
+            <thead id="table-head">
+                <tr>
+                    <th>Imię</th>
+                    <th>Nazwisko</th>
+                    <th>Email</th>
+                    <th>Opis</th>
+                    <th>Czas</th>
+                    <th>Długość geograficzna</th>
+                    <th>Szerokość geograficzna</th>
+                    <th>Teren kopalni</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            <!-- Wiersze zostaną wypełnione dynamicznie -->
+            </tbody>
+        </table>
+    </div>
+
 
     <script>
         function startAplikacji() {
@@ -123,11 +167,53 @@
                     document.getElementById('imie').textContent = userData.imie || '';
                     document.getElementById('nazwisko').textContent = userData.nazwisko || '';
                     document.getElementById('email').textContent = userData.email || '';
-                })
-                .catch(error => {
-                    console.error('Szczegóły błędu:', error);
-                });
+
+                // Sprawdź rolę użytkownika
+                const panelTitle = document.getElementById('panel-title');
+                if (userData.rola === 'admin') {
+                    panelTitle.textContent = 'Witaj w Panelu administratora';
+                    ustawNaglowekTabeli(true);
+                    pobierzSzkodyAdmin(); // Pobierz wszystkie szkody dla administratora
+                } else {
+                    panelTitle.textContent = 'Witaj w Panelu użytkownika';
+                    ustawNaglowekTabeli(false);
+                    pobierzSzkody(); // Pobierz szkody dla zwykłego użytkownika
+                }
+            })
+            .catch(error => {
+                console.error('Szczegóły błędu:', error);
+            });
+    }
+
+    // Funkcja do ustawienia nagłówka tabeli
+    function ustawNaglowekTabeli(jestAdmin) {
+        const thead = document.getElementById('table-head');
+        thead.innerHTML = ''; // Wyczyść nagłówki
+
+        // Dodaj odpowiednie kolumny w zależności od roli
+        if (jestAdmin) {
+            thead.innerHTML = `
+                <tr>
+                    <th>Imię</th>
+                    <th>Nazwisko</th>
+                    <th>Email</th>
+                    <th>Opis</th>
+                    <th>Czas</th>
+                    <th>Długość geograficzna</th>
+                    <th>Szerokość geograficzna</th>
+                    <th>Teren kopalni</th>
+                </tr>`;
+        } else {
+            thead.innerHTML = `
+                <tr>
+                    <th>Opis</th>
+                    <th>Czas</th>
+                    <th>Długość geograficzna</th>
+                    <th>Szerokość geograficzna</th>
+                    <th>Teren kopalni</th>
+                </tr>`;
         }
+    }
 
         // Wylogowanie
         function logout() {
@@ -143,8 +229,84 @@
                 });
         }
 
-        // Sprawdź stan logowania użytkownika po załadowaniu strony
-        document.addEventListener('DOMContentLoaded', startAplikacji);
+        function pobierzSzkody() {
+            fetch('/api/szkody', { credentials: 'include' }) // Wysyłamy zapytanie z ciasteczkami sesji
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak dostępu do danych szkód. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania szkód');
+                    }
+                    return response.json();
+                })
+                .then(szkody => {
+                    const tableBody = document.querySelector('#szkody-table tbody');
+                    tableBody.innerHTML = ''; // Wyczyść tabelę przed wypełnieniem
+
+                    // Dodaj wiersze do tabeli
+                    szkody.forEach(szkoda => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${szkoda.opis}</td>
+                            <td>${szkoda.czas}</td>
+                            <td>${szkoda.longitude}</td>
+                            <td>${szkoda.latitude}</td>
+                            <td>${szkoda.teren_kopalni}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+        function pobierzSzkodyAdmin() {
+            fetch('/admin/szkody', { credentials: 'include' }) // Endpoint dla administratora
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak dostępu do danych szkód. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (response.status === 403) {
+                        alert('Brak uprawnień do przeglądania danych szkód.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania wszystkich szkód');
+                    }
+                    return response.json();
+                })
+                .then(szkody => {
+                    const tableBody = document.querySelector('#szkody-table tbody');
+                    tableBody.innerHTML = ''; // Wyczyść tabelę przed wypełnieniem
+
+                    // Dodaj wiersze do tabeli
+                    szkody.forEach(szkoda => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${szkoda.imie}</td>
+                            <td>${szkoda.nazwisko}</td>
+                            <td>${szkoda.email}</td>
+                            <td>${szkoda.opis}</td>
+                            <td>${szkoda.czas}</td>
+                            <td>${szkoda.longitude}</td>
+                            <td>${szkoda.latitude}</td>
+                            <td>${szkoda.teren_kopalni}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+
+        // Wywołaj pobranie szkód po załadowaniu strony
+        document.addEventListener('DOMContentLoaded', () => {
+            startAplikacji(); // Pobiera dane użytkownika
+        });
+
     </script>
 </body>
 </html>

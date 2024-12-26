@@ -51,7 +51,17 @@ function authenticateSession(req, res, next) {
     next();
 }
 
-// Endpoint do rejestracji
+// Middleware do sprawdzania ról
+function authorizeRole(role) {
+    return (req, res, next) => {
+        if (!req.session.user || req.session.user.rola !== role) {
+            return res.status(403).json({ message: 'Brak uprawnień' });
+        }
+        next();
+    };
+}
+
+// Endpoint do rejestracji użytkownika
 app.post('/api/register', async (req, res) => {
     const { imie, nazwisko, email, haslo, numer_telefonu, ulica, miasto } = req.body;
 
@@ -64,8 +74,8 @@ app.post('/api/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(haslo, 10);
 
         const result = await pool.query(
-            `INSERT INTO uzytkownicy (haslo, imie, nazwisko, email, numer_telefonu, ulica, miasto) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            `INSERT INTO uzytkownicy (haslo, imie, nazwisko, email, numer_telefonu, ulica, miasto, rola) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'klient') RETURNING *`,
             [hashedPassword, imie, nazwisko, email, numer_telefonu, ulica, miasto]
         );
 
@@ -75,6 +85,7 @@ app.post('/api/register', async (req, res) => {
         res.status(500).json({ message: 'Błąd podczas rejestracji', error: error.message });
     }
 });
+
 
 // Endpoint do logowania
 app.post('/api/login', async (req, res) => {
@@ -95,13 +106,16 @@ app.post('/api/login', async (req, res) => {
         }
 
         // Zapisz dane użytkownika w sesji
-        req.session.user = { id: user.id, email: user.email };
-        res.status(200).json({ message: 'Zalogowano pomyślnie' });
+        req.session.user = { id: user.id, email: user.email, rola: user.rola };
+
+        // Zwróć rolę użytkownika w odpowiedzi
+        res.status(200).json({ message: 'Zalogowano pomyślnie', rola: user.rola });
     } catch (error) {
         console.error('Szczegóły błędu:', error);
         res.status(500).json({ message: 'Błąd podczas logowania', error: error.message });
     }
 });
+
 
 // Endpoint do wylogowania
 app.post('/api/logout', (req, res) => {
@@ -129,10 +143,14 @@ app.post('/api/points', authenticateSession, async (req, res) => {
         const checkQuery = `
             SELECT 
                 CASE 
-                    WHEN ST_Within(ST_SetSRID(ST_MakePoint($1, $2), 4326), kopalnia_wszystkie.wkb_geometry) THEN 'TAK' 
-                    ELSE 'NIE' 
-                END AS teren_kopalni 
-            FROM kopalnia_wszystkie
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM kopalnia_wszystkie
+                        WHERE ST_Within(ST_SetSRID(ST_MakePoint($1, $2), 4326), kopalnia_wszystkie.wkb_geometry)
+                    ) THEN 'TAK'
+                    ELSE 'NIE'
+                END AS teren_kopalni
+
         `;
         const checkValues = [longitude, latitude];
         const checkResult = await pool.query(checkQuery, checkValues);
@@ -166,7 +184,7 @@ app.listen(PORT, () => {
 app.get('/api/user', authenticateSession, async (req, res) => {
     try {
         const userId = req.session.user.id; // Pobierz ID użytkownika z sesji
-        const userResult = await pool.query('SELECT imie, nazwisko, email FROM uzytkownicy WHERE id = $1', [userId]);
+        const userResult = await pool.query('SELECT imie, nazwisko, email, rola FROM uzytkownicy WHERE id = $1', [userId]);
 
         if (userResult.rows.length === 0) {
             return res.status(404).json({ message: 'Użytkownik nie znaleziony' });
@@ -179,3 +197,35 @@ app.get('/api/user', authenticateSession, async (req, res) => {
         res.status(500).json({ message: 'Błąd podczas pobierania danych użytkownika', error: error.message });
     }
 });
+
+// Endpoint do pobierania szkód dla zalogowanego użytkownika
+app.get('/api/szkody', authenticateSession, async (req, res) => {
+    try {
+        const userId = req.session.user.id; // Pobierz ID użytkownika z sesji
+
+        // Pobierz szkody dla użytkownika
+        const query = `
+            SELECT opis, czas, longitude, latitude, teren_kopalni 
+            FROM niezatwierdzone_szkody 
+            WHERE email = (SELECT email FROM uzytkownicy WHERE id = $1)
+        `;
+        const result = await pool.query(query, [userId]);
+
+        res.status(200).json(result.rows); // Zwróć dane szkód
+    } catch (error) {
+        console.error('Szczegóły błędu:', error);
+        res.status(500).json({ message: 'Błąd podczas pobierania szkód', error: error.message });
+    }
+});
+
+// Endpoint do pobierania wszystkich szkód dla administratora
+app.get('/admin/szkody', authenticateSession, authorizeRole('admin'), async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM niezatwierdzone_szkody');
+        res.status(200).json(result.rows); // Zwróć wszystkie szkody
+    } catch (error) {
+        console.error('Szczegóły błędu:', error);
+        res.status(500).json({ message: 'Błąd podczas pobierania szkód', error: error.message });
+    }
+});
+

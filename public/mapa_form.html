@@ -12,13 +12,13 @@
             display: flex;
             justify-content: space-around;
             margin: 20px;
+            background-color: #ccc;
         }
         #map {
             width: 70%;
             height: 900px;
             margin-top: 40px;
         }
-
 
 
         #form-container {
@@ -75,7 +75,7 @@
             right: 10px;
             width: 200px;
             padding: 10px;
-            background-color: #007bff;
+            background-color: #108f34;
             color: white;
             border: none;
             border-radius: 8px;
@@ -85,7 +85,7 @@
             z-index: 1000;
         }
         #user-panel-btn:hover {
-            background-color: #0056b3;
+            background-color: #01721b;
         }
 
         #auth-btn {
@@ -111,6 +111,7 @@
     </style>
 </head>
 <body>
+    
     <button id="user-panel-btn" onclick="goToUserPanel()">Panel użytkownika</button>
     <div id="map"></div>
 
@@ -367,7 +368,7 @@
         function getColor(feature) {
             // Przykład: kolor na podstawie ID lub innej właściwości
             const colors = ['#e6194b', '#808080', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
-            const id = feature.properties.id || 0; // Właściwość `id` (lub inna unikalna cecha)
+            const id = feature.properties.id || 0; // Właściwość id (lub inna unikalna cecha)
             return colors[id % colors.length]; // Przypisz kolor z tablicy na podstawie modulo
         }
 

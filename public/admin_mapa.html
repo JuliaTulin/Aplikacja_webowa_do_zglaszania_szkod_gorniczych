@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktywna Mapa</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="mapa.css">
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px;
+            background-color: #ccc;
+        }
+        #map {
+            width: 95%;
+            height: 800px;
+        }
+
+        #user-panel-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            padding: 10px;
+            background-color: #108f34;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+        #user-panel-btn:hover {
+            background-color: #01721b;
+        }
+
+        #auth-btn {
+            position: absolute;
+            top: 10px;
+            right: 220px; /* Obok przycisku Panel użytkownika */
+            width: 200px;
+            padding: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        #auth-btn:hover {
+            background-color: #218838;
+        }
+
+        #filters {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        #filters label, #filters input, #filters button {
+            font-size: 14px;
+        }
+        button {
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+</head>
+<body>
+    
+    <button id="user-panel-btn" onclick="goToAdminPanel()">Panel administratora</button>
+
+    <div id="filters">
+        <label for="date-from">Data od:</label>
+        <input type="date" id="date-from">
+
+        <label for="date-to">Data do:</label>
+        <input type="date" id="date-to">
+
+        <button onclick="filterPins()">Filtruj</button>
+    </div>
+    <div id="map"></div>
+
+    
+    <script>
+
+        async function getAdminData() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const userData = await response.json();
+                    document.getElementById('first-name').value = userData.imie || '';
+                    document.getElementById('last-name').value = userData.nazwisko || '';
+                    document.getElementById('email').value = userData.email || '';
+                } else {
+                    alert('Nie można pobrać danych użytkownika.');
+                }
+            } catch (error) {
+                console.error('Błąd podczas pobierania danych użytkownika:', error);
+            }
+        }
+
+        function goToAdminPanel() {
+            if (isUserLoggedIn()) {
+                window.location.href = '/user_panel.html';
+            } else {
+                alert('Musisz być zalogowany, aby uzyskać dostęp do panelu użytkownika.');
+            }
+        }
+        var map = L.map('map');
+        var marker;
+        var userLat, userLng;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        var center = [50.0804724, 19.1614253]; // Współrzędne centrum
+        var bufferRadius = 11 * 1000;
+        var bounds = L.latLng(center).toBounds(bufferRadius);
+        map.fitBounds(bounds);
+
+
+        // Sprawdź, czy użytkownik jest zalogowany
+        async function isUserLoggedIn() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include' // Ważne! Przekazuje ciasteczka w żądaniu
+                });
+                if (response.ok) {
+                    return true; // Użytkownik jest zalogowany
+                } else {
+                    return false; // Brak sesji lub sesja wygasła
+                }
+            } catch (error) {
+                console.error('Błąd sprawdzania sesji:', error);
+                return false; // Zakładamy, że użytkownik nie jest zalogowany w przypadku błędu
+            }
+        }
+
+
+        async function fetchUnapprovedReports() {
+            try {
+                const response = await fetch('/admin/szkody', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    console.error('Błąd odpowiedzi serwera:', response.status, response.statusText);
+                    throw new Error('Błąd pobierania danych szkód');
+                }
+
+                const data = await response.json();
+                console.log('Otrzymane dane szkód:', data);
+                if (!Array.isArray(data)) {
+                    throw new Error('Niepoprawny format danych - oczekiwana tablica.');
+                }
+
+                return data;
+            } catch (error) {
+                console.error('Błąd w fetchUnapprovedReports:', error);
+                alert('Nie udało się pobrać danych szkód.');
+                return [];
+            }
+        }
+
+        var markersLayer = L.layerGroup().addTo(map);
+
+        function addPinsToMap(reports) {
+            markersLayer.clearLayers();
+            reports.forEach(report => {
+                if (report.latitude && report.longitude) {
+                    const marker = L.marker([report.latitude, report.longitude])
+                        .bindPopup(`
+                            <strong>Szkoda:</strong><br>
+                            Imię: ${report.imie}<br>
+                            Nazwisko: ${report.nazwisko}<br>
+                            Email: ${report.email}<br>
+                            Opis: ${report.opis}<br>
+                            Data: ${new Date(report.czas).toLocaleDateString()}<br>
+                        `);
+                    markersLayer.addLayer(marker);
+                }
+            });
+        }
+
+        async function loadUnapprovedReports() {
+            const reports = await fetchUnapprovedReports();
+            addPinsToMap(reports);
+        }
+
+        async function filterPins() {
+            const dateFrom = document.getElementById('date-from').value;
+            const dateTo = document.getElementById('date-to').value;
+
+            if (!dateFrom || !dateTo) {
+                alert('Wybierz zakres dat.');
+                return;
+            }
+
+            const reports = await fetchUnapprovedReports();
+            const filteredReports = reports.filter(report => {
+                const reportDate = new Date(report.czas);
+                const fromDate = new Date(dateFrom);
+                const toDate = new Date(dateTo);
+                return reportDate >= fromDate && reportDate <= toDate;
+            });
+
+            addPinsToMap(filteredReports);
+        }
+
+        // Wywołaj funkcję ładującą przy inicjalizacji mapy
+        loadUnapprovedReports();
+
+
+
+        function onLoginSuccess() {
+            initializeApp(); // Przeładuj widok
+        }
+
+
+        async function login(email, password) {
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include', // Przekazuje ciasteczka w żądaniu
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (response.ok) {
+                    alert('Zalogowano pomyślnie!');
+                    onLoginSuccess(); // Zaktualizuj interfejs
+                } else {
+                    alert('Nieprawidłowe dane logowania.');
+                }
+            } catch (error) {
+                console.error('Błąd logowania:', error);
+                alert('Wystąpił problem podczas logowania.');
+            }
+        }
+
+        
+
+        // Funkcja do generowania kolorów na podstawie właściwości feature
+        function getColor(feature) {
+            // Przykład: kolor na podstawie ID lub innej właściwości
+            const colors = ['#e6194b', '#808080', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+            const id = feature.properties.id || 0; // Właściwość `id` (lub inna unikalna cecha)
+            return colors[id % colors.length]; // Przypisz kolor z tablicy na podstawie modulo
+        }
+
+        
+        // Funkcja do obsługi każdego elementu GeoJSON
+        function onEachFeature(feature, layer) {
+            if (feature.properties && feature.properties.nazwa) {
+                // Dodaj dymek z nazwą kopalni
+                layer.bindTooltip(feature.properties.nazwa, {
+                    permanent: false,  // Tymczasowy dymek
+                    direction: "auto", // Automatyczne dopasowanie pozycji
+                    className: 'kopalnia-tooltip' // Opcjonalna klasa CSS
+                });
+            }
+        }
+
+        // Funkcja, która ładuje plik GeoJSON i dodaje go jako warstwę na mapie
+        async function loadGeoJsonLayer() {
+            try {
+                const response = await fetch('kopalnia/kopalnia_wszystkie.geojson');
+                if (!response.ok) throw new Error(`Błąd HTTP: ${response.status}`);
+                const geojsonData = await response.json();
+
+                // Dodaj warstwę GeoJSON do mapy z obsługą zdarzeń
+                const geoJsonLayer = L.geoJSON(geojsonData, {
+                    onEachFeature: onEachFeature, // Obsługa każdego elementu
+                    style: function (feature) {
+                        return {
+                            color: '#000000', // Obramowanie poligonów
+                            weight: 1,
+                            fillColor: getColor(feature), // Wypełnienie poligonu
+                            fillOpacity: 0.5
+                        };
+                    }
+                }).addTo(map);
+
+                map.fitBounds(geoJsonLayer.getBounds());
+            } catch (error) {
+                console.error("Błąd podczas wczytywania pliku GeoJSON:", error);
+                alert('Nie udało się wczytać pliku GeoJSON.');
+            }
+        }
+
+        // Wywołaj funkcję ładującą po zainicjowaniu mapy
+        loadGeoJsonLayer();
+
+    </script>
+</body>
+</html>

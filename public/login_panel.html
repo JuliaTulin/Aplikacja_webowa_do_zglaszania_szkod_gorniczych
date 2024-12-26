@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
+            background-color: #ccc;
             margin: 0;
             padding: 0;
             display: flex;
@@ -175,31 +175,51 @@
         });
 
         // Logowanie użytkownika
-        document.querySelector('#login-form form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+    document.querySelector('#login-form form').addEventListener('submit', async (e) => {
+        e.preventDefault();
 
-            const loginData = {
-                email: document.getElementById('login-email').value,
-                haslo: document.getElementById('login-password').value
-            };
+        const loginData = {
+            email: document.getElementById('login-email').value,
+            haslo: document.getElementById('login-password').value
+        };
 
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
+        try {
+            const loginResponse = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(loginData),
+            });
+
+            const loginResult = await loginResponse.json();
+            if (loginResponse.ok) {
+                // Po udanym logowaniu, pobierz dane użytkownika
+                const userResponse = await fetch('/api/user', {
+                    method: 'GET',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(loginData),
+                    credentials: 'same-origin' // Zapewnia obsługę ciasteczek sesyjnych
                 });
 
-                const result = await response.json();
-                if (response.ok) {
-                    window.location.href = './mapa_form.html';
+                const userResult = await userResponse.json();
+                if (userResponse.ok) {
+                    // Sprawdź rolę użytkownika i przekieruj na odpowiednią stronę
+                    if (userResult.rola === 'admin') {
+                        window.location.href = './admin_mapa.html';
+                    } else if (userResult.rola === 'klient') {
+                        window.location.href = './mapa_form.html';
+                    } else {
+                        alert('Nieznana rola użytkownika.');
+                    }
                 } else {
-                    alert(`Błąd logowania: ${result.message}`);
+                    alert(`Błąd podczas pobierania danych użytkownika: ${userResult.message}`);
                 }
-            } catch (err) {
-                console.error('Błąd podczas logowania:', err);
+            } else {
+                alert(`Błąd logowania: ${loginResult.message}`);
             }
-        });
+        } catch (err) {
+            console.error('Błąd podczas logowania:', err);
+        }
+    });
+
     </script>
 </body>
 </html>
