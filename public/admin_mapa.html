@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktywna Mapa</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="mapa.css">
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 5px;
+            background-color: #ccc;
+            overflow: hidden;
+        }
+        #map {
+            margin-top: 5px;
+            width: 100%;
+            height: 90vh;
+        }
+
+        #admin-panel-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            padding: 10px;
+            background-color: #16842e;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+        #admin-panel-btn:hover {
+            background-color: #252625;
+        }
+
+        #seismic-map-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            padding: 10px;
+            background-color:#820404;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+        #seismic-map-btn:hover {
+            background-color: #252625;
+        }
+
+        #admin-panel-btn {
+            right: 10px;
+        }
+
+        #seismic-map-btn {
+            right: 220px;
+        }
+
+        #filters {
+            display: flex;
+            justify-content: flex-start; /* Ustawienie elementów na jednej linii, zaczynając od lewej */
+            align-items: center;
+            margin: 10px;
+            gap: 10px;
+            padding: 6px;
+            width: auto; /* Dostosowanie szerokości do zawartości */
+            background-color: #eeeeee;
+        }
+
+        #labelka {
+            white-space: nowrap; /* Zapobiega zawijaniu tekstu */
+            margin-right: 10px; /* Dodatkowy odstęp po prawej stronie */
+            font-size: 16px;
+            border: none;
+            font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-weight: 400;
+        }
+
+        #filters input {
+            margin-top: 3px;
+            margin-bottom: 3px;
+        }
+
+
+        button {
+            padding: 5px 10px;
+            background-color: #222322;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            height: 35px;
+        }
+        button:hover {
+            background-color: #393a39;
+        }
+
+        #scale-numeric {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 3px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    
+    <button id="admin-panel-btn" onclick="goToAdminPanel()">Panel administratora</button>
+    <button id="seismic-map-btn" onclick="goToSeismicMap()">Mapa Wstrząsów</button>
+
+    <div id="filters">
+        <label id="labelka" for="date-from">Pokaż na mapie zatwierdzone szkody według daty od:</label>
+        <input type="date" id="date-from">
+
+        <label for="date-to">do:</label>
+        <input type="date" id="date-to">
+
+        <button onclick="filterPins()">Filtruj</button>
+    </div>
+    <div id="map"></div>
+
+    
+    <script>
+
+        async function getAdminData() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const userData = await response.json();
+                    document.getElementById('first-name').value = userData.imie || '';
+                    document.getElementById('last-name').value = userData.nazwisko || '';
+                    document.getElementById('email').value = userData.email || '';
+                } else {
+                    alert('Nie można pobrać danych użytkownika.');
+                }
+            } catch (error) {
+                console.error('Błąd podczas pobierania danych użytkownika:', error);
+            }
+        }
+
+        function goToAdminPanel() {
+            if (isUserLoggedIn()) {
+                window.location.href = '/admin_panel.html';
+            } else {
+                alert('Musisz być zalogowany, aby uzyskać dostęp do panelu użytkownika.');
+            }
+        }
+
+        function goToSeismicMap() {
+            window.location.href = '/wstrzasy.html';
+        }
+        
+        var map = L.map('map');
+        var marker;
+        var userLat, userLng;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        var center = [50.0804724, 19.1614253]; // Współrzędne centrum
+        var bufferRadius = 11 * 1000;
+        var bounds = L.latLng(center).toBounds(bufferRadius);
+        map.fitBounds(bounds);
+
+        // Dodanie elementu do wyświetlania skali liczbowej
+        const numericScale = L.control({ position: 'bottomright' });
+
+        numericScale.onAdd = function () {
+            const div = L.DomUtil.create('div', 'leaflet-control');
+            div.id = 'scale-numeric';
+            div.innerHTML = 'Skala: 1:10000';
+            return div;
+        };
+
+        numericScale.addTo(map);
+
+        // Funkcja obliczająca skalę liczbową
+        function updateNumericScale() {
+            const zoom = map.getZoom();
+            const scale = Math.round(40075016.686 / Math.pow(2, zoom + 8)); // Obliczanie skali
+            document.getElementById('scale-numeric').textContent = `Skala: 1:${scale}`;
+        }
+
+        // Aktualizacja skali liczbowej przy zmianie zoomu
+        map.on('zoomend', updateNumericScale);
+
+        // Wywołanie funkcji początkowo
+        updateNumericScale();
+
+
+        // Sprawdź, czy użytkownik jest zalogowany
+        async function isUserLoggedIn() {
+            try {
+                const response = await fetch('/api/session', {
+                    method: 'GET',
+                    credentials: 'include' // Ważne! Przekazuje ciasteczka w żądaniu
+                });
+                if (response.ok) {
+                    return true; // Użytkownik jest zalogowany
+                } else {
+                    return false; // Brak sesji lub sesja wygasła
+                }
+            } catch (error) {
+                console.error('Błąd sprawdzania sesji:', error);
+                return false; // Zakładamy, że użytkownik nie jest zalogowany w przypadku błędu
+            }
+        }
+
+
+        async function fetchApprovedReports() {
+            try {
+                const response = await fetch('/admin/zatwierdzoneSzkody', {
+                    method: 'GET',
+                    credentials: 'include'
+
+                });
+                if (!response.ok) {
+                    console.error('Błąd odpowiedzi serwera:', response.status, response.statusText);
+                    throw new Error('Błąd pobierania danych szkód');
+                }
+
+                const data = await response.json();
+                console.log('Otrzymane dane szkód:', data);
+                if (!Array.isArray(data)) {
+                    throw new Error('Niepoprawny format danych - oczekiwana tablica.');
+                }
+
+                return data;
+            } catch (error) {
+                console.error('Błąd w fetchApprovedReports:', error);
+                alert('Nie udało się pobrać danych szkód.');
+                return [];
+            }
+        }
+
+        var markersLayer = L.layerGroup().addTo(map);
+
+        function addPinsToMap(reports) {
+            markersLayer.clearLayers();
+            reports.forEach(report => {
+
+                if (report.latitude && report.longitude) {
+                    const marker = L.marker([parseFloat(report.latitude), parseFloat(report.longitude)])
+                        .bindPopup(`
+                            <strong>Szkoda:</strong><br>
+                            Imię: ${report.imie}<br>
+                            Nazwisko: ${report.nazwisko}<br>
+                            Email: ${report.email}<br>
+                            Opis: ${report.opis}<br>
+                            Data: ${new Date(report.czas_utworzenia).toLocaleDateString()}<br>
+                        `);
+                    markersLayer.addLayer(marker);
+                }
+            });
+        }
+
+        async function loadUnapprovedReports() {
+            const reports = await fetchApprovedReports();
+            addPinsToMap(reports);
+        }
+
+        async function filterPins() {
+            const dateFrom = document.getElementById('date-from').value;
+            const dateTo = document.getElementById('date-to').value;
+            
+
+            if (!dateFrom || !dateTo) {
+                alert('Wybierz zakres dat.');
+                return;
+            }
+
+            const reports = await fetchApprovedReports();
+            const filteredReports = reports.filter(report => {
+                const reportDate = new Date(report.czas_utworzenia);
+                const fromDate = new Date(dateFrom);
+                const toDate = new Date(dateTo);
+                return reportDate >= fromDate && reportDate <= toDate;
+            });
+
+            addPinsToMap(filteredReports);
+        }
+
+        // Wywołaj funkcję ładującą przy inicjalizacji mapy
+        loadUnapprovedReports();
+
+
+
+        function onLoginSuccess() {
+            initializeApp(); // Przeładuj widok
+        }
+
+
+        async function login(email, password) {
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include', // Przekazuje ciasteczka w żądaniu
+                    body: JSON.stringify({ email, password })
+                });
+
+                if (response.ok) {
+                    alert('Zalogowano pomyślnie!');
+                    onLoginSuccess(); // Zaktualizuj interfejs
+                } else {
+                    alert('Nieprawidłowe dane logowania.');
+                }
+            } catch (error) {
+                console.error('Błąd logowania:', error);
+                alert('Wystąpił problem podczas logowania.');
+            }
+        }
+
+        
+
+        // Funkcja do generowania kolorów na podstawie właściwości feature
+        function getColor(feature) {
+            // Przykład: kolor na podstawie ID lub innej właściwości
+            const colors = ['#e6194b', '#808080', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+            const id = feature.properties.id || 0; // Właściwość `id` (lub inna unikalna cecha)
+            return colors[id % colors.length]; // Przypisz kolor z tablicy na podstawie modulo
+        }
+
+        
+        // Funkcja do obsługi każdego elementu GeoJSON
+        function onEachFeature(feature, layer) {
+            if (feature.properties && feature.properties.nazwa) {
+                // Dodaj dymek z nazwą kopalni
+                layer.bindTooltip(feature.properties.nazwa, {
+                    permanent: false,  // Tymczasowy dymek
+                    direction: "auto", // Automatyczne dopasowanie pozycji
+                    className: 'kopalnia-tooltip' // Opcjonalna klasa CSS
+                });
+            }
+        }
+
+        // Funkcja, która ładuje plik GeoJSON i dodaje go jako warstwę na mapie
+        async function loadGeoJsonLayer() {
+            try {
+                const response = await fetch('kopalnia/kopalnia_wszystkie.geojson');
+                if (!response.ok) throw new Error(`Błąd HTTP: ${response.status}`);
+                const geojsonData = await response.json();
+
+                // Dodaj warstwę GeoJSON do mapy z obsługą zdarzeń
+                const geoJsonLayer = L.geoJSON(geojsonData, {
+                    onEachFeature: onEachFeature, // Obsługa każdego elementu
+                    style: function (feature) {
+                        return {
+                            color: '#000000', // Obramowanie poligonów
+                            weight: 1,
+                            fillColor: getColor(feature), // Wypełnienie poligonu
+                            fillOpacity: 0.5
+                        };
+                    }
+                }).addTo(map);
+
+                map.fitBounds(geoJsonLayer.getBounds());
+            } catch (error) {
+                console.error("Błąd podczas wczytywania pliku GeoJSON:", error);
+                alert('Nie udało się wczytać pliku GeoJSON.');
+            }
+        }
+
+        // Wywołaj funkcję ładującą po zainicjowaniu mapy
+        loadGeoJsonLayer();
+
+    </script>
+</body>
+</html>

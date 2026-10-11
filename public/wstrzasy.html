@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Wstrząsów</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {
+            background-color: #ccc;
+        }
+
+        #map {
+            width: 100%;
+            height: 90vh;
+            position: relative;
+        }
+
+
+        #scale-numeric {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 3px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        #filters {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px;
+            margin-left: 30%;
+            padding: 10px;
+            width: 700px;
+            background-color: #eeeeee;
+        }
+        #filters label{
+            font-size: 16px;
+            border: none;
+            font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif
+        }
+        #filters input, #filters button {
+            font-size: 16px;
+            border: none;
+        }
+        button {
+            padding: 5px 10px;
+            background-color: #1f201f;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #4a4e4a;
+        }
+    </style>
+</head>
+<body>
+    <div id="filters">
+        <label for="start-date">Wyszukaj wstrząsy które wystąpiły od:</label>
+        <input type="date" id="start-date">
+    
+        <label for="end-date"> do:</label>
+        <input type="date" id="end-date">
+    
+        <button id="filter-button">Filtruj</button>
+    </div>
+    
+    <div id="map"></div>
+
+    <script>
+        // Inicjalizacja mapy
+        const map = L.map('map').setView([50.08, 19.16], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Dodanie elementu do wyświetlania skali liczbowej
+        const numericScale = L.control({ position: 'bottomright' });
+
+        numericScale.onAdd = function () {
+            const div = L.DomUtil.create('div', 'leaflet-control');
+            div.id = 'scale-numeric';
+            div.innerHTML = 'Skala: 1:10000';
+            return div;
+        };
+
+        numericScale.addTo(map);
+
+        function getColor(feature) {
+            // Przykład: kolor na podstawie ID lub innej właściwości
+            const colors = ['#e6194b', '#808080', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+            const id = feature.properties.id || 0; // Właściwość id (lub inna unikalna cecha)
+            return colors[id % colors.length]; // Przypisz kolor z tablicy na podstawie modulo
+        }
+
+        // Funkcja do obsługi każdego elementu GeoJSON
+        function onEachFeature(feature, layer) {
+            if (feature.properties && feature.properties.nazwa) {
+                // Dodaj dymek z nazwą kopalni
+                layer.bindTooltip(feature.properties.nazwa, {
+                    permanent: false,  // Tymczasowy dymek
+                    direction: "auto", // Automatyczne dopasowanie pozycji
+                    className: 'kopalnia-tooltip' // Opcjonalna klasa CSS
+                });
+            }
+        }
+
+        async function loadGeoJsonLayer() {
+            try {
+                const response = await fetch('kopalnia/kopalnia_wszystkie.geojson');
+                if (!response.ok) throw new Error(`Błąd HTTP: ${response.status}`);
+                const geojsonData = await response.json();
+
+                // Dodaj warstwę GeoJSON do mapy z obsługą zdarzeń
+                const geoJsonLayer = L.geoJSON(geojsonData, {
+                    onEachFeature: onEachFeature, // Obsługa każdego elementu
+                    style: function (feature) {
+                        return {
+                            color: '#000000', // Obramowanie poligonów
+                            weight: 1,
+                            fillColor: getColor(feature), // Wypełnienie poligonu
+                            fillOpacity: 0.5
+                        };
+                    }
+                }).addTo(map);
+
+                map.fitBounds(geoJsonLayer.getBounds());
+            } catch (error) {
+                console.error("Błąd podczas wczytywania pliku GeoJSON:", error);
+                alert('Nie udało się wczytać pliku GeoJSON.');
+            }
+        }
+
+        // Funkcja obliczająca skalę liczbową
+        function updateNumericScale() {
+            const zoom = map.getZoom();
+            const scale = Math.round(40075016.686 / Math.pow(2, zoom + 8)); // Obliczanie skali
+            document.getElementById('scale-numeric').textContent = `Skala: 1:${scale}`;
+        }
+
+        // Aktualizacja skali liczbowej przy zmianie zoomu
+        map.on('zoomend', updateNumericScale);
+
+        // Wywołanie funkcji początkowo
+        updateNumericScale();
+
+        function getColorWstrzasu(energia) {
+            // Zmieniamy kolory na podstawie energii
+            if (energia < 100000) {
+                return '#0000FF'; // Niebieski dla niskoenergetycznych
+            } else {
+                return '#FF0000'; // Czerwony dla wysokoenergetycznych
+            }
+        }
+
+        function getMarkerSize(energia) {
+            if (energia <= 1000) return 5;  // Najmniejszy rozmiar
+            if (energia <= 5000) return 8;
+            if (energia <= 10000) return 11;
+            if (energia <= 50000) return 15;
+            if (energia <= 100000) return 18;
+            if (energia <= 500000) return 20;
+            if (energia <= 750000) return 22;
+            if (energia <= 1000000) return 25;
+            if (energia <= 25000000) return 28;
+            if (energia <= 50000000) return 30;
+            if (energia <= 75000000) return 32;
+            if (energia <= 100000000) return 35;
+            if (energia <= 150000000) return 37;
+            return 40;  // Największy rozmiar
+        }
+
+        // Wczytanie danych z pliku JSON
+        fetch('agh_wstrzasy.json')
+            .then(response => response.json())
+            .then(earthquakeData => {
+                // Konwersja dat na timestamp
+                earthquakeData.forEach(event => {
+                    event.timestamp = new Date(event.DATETIME).getTime();
+                });
+
+                // Punkty na mapie
+                let markers = [];
+
+                function updateMap([start, end]) {
+                    // Usuń stare markery
+                    markers.forEach(marker => map.removeLayer(marker));
+                    markers = [];
+
+                    // Filtruj dane i dodaj markery
+                    earthquakeData.filter(event => event.timestamp >= start && event.timestamp <= end)
+                        .forEach(event => {
+                            const isLowEnergy = event.ENERGIA < 100000;
+                            const marker = L.circleMarker([event.Latitude, event.Longitude], {
+                                radius: getMarkerSize(event.ENERGIA), // Rozmiar zależny od energii
+                                color: getColorWstrzasu(event.ENERGIA),  // Kolor zależny od energii
+                                fillOpacity: 0.4
+                            }).addTo(map);
+
+                            // Dodanie tooltip z energią
+                            const energyType = isLowEnergy ? 'Niskoenergetyczny' : 'Wysokoenergetyczny';
+                            marker.bindTooltip(`Data i czas: ${event.DATETIME}<br>Energia: ${event.ENERGIA} J<br>Rodzaj wstrząsu: ${energyType}`, {
+                                permanent: false,
+                                direction: 'top'
+                            })
+                            markers.push(marker);
+                        });
+                }
+
+                // Obsługa przycisku filtrującego
+                document.getElementById('filter-button').addEventListener('click', () => {
+                    const startDate = new Date(document.getElementById('start-date').value).getTime();
+                    const endDate = new Date(document.getElementById('end-date').value).getTime();
+
+                    if (!startDate || !endDate) {
+                        alert('Proszę wybrać poprawne daty.');
+                        return;
+                    }
+
+                    if (startDate > endDate) {
+                        alert('Data początkowa nie może być późniejsza niż data końcowa.');
+                        return;
+                    }
+
+                    updateMap([startDate, endDate]);
+                });
+            })
+            .catch(error => console.error('Błąd wczytywania danych:', error));
+
+            loadGeoJsonLayer()
+    </script>
+</body>
+</html>

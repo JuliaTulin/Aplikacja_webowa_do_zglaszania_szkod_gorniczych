@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktywna Mapa</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="mapa.css">
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: space-around;
+            margin-right: 0px;
+            margin-left: 0px;
+            margin-bottom: 0px;
+            background-color: #ccc;
+        }
+        header {
+            background-color: #252625;
+            opacity: 0.8;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: fixed; /* Ustawienie nagłówka jako stałego na górze */
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+        }
+
+        #map {
+            width: 100%;
+            height: 835px;
+            margin-top: 60px;
+        }
+
+
+        h1 {
+            margin: 0;
+        }
+
+        #seismic-map-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            padding: 10px;
+            background-color:#820404;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+        #seismic-map-btn:hover {
+            background-color: #252625;
+        }
+
+        #auth-btn {
+            position: absolute;
+            top: 10px;
+            right: 220px; /* Obok przycisku Panel użytkownika */
+            width: 200px;
+            padding: 10px;
+            background-color: #16842e;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        #auth-btn:hover {
+            background-color: #252625;
+        }
+        #scale-numeric {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 3px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+    </style>
+</head>
+<body>
+    <header>
+        <h1 id="panel-title">Zgłoś szkodę górniczą</h1>
+    </header>
+    <button id="auth-btn" onclick="goToAuth()"> Zaloguj się </button>
+    <button id="seismic-map-btn" onclick="goToSeismicMap()">Mapa Wstrząsów</button>
+    <div id="map"></div>
+
+    
+    <script>
+      
+        var map = L.map('map');
+        var marker;
+        var userLat, userLng;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" style=" color: inherit;">OpenStreetMap contributors </a>'
+        }).addTo(map);
+
+
+        // Dodanie elementu do wyświetlania skali liczbowej
+        const numericScale = L.control({ position: 'bottomright' });
+
+        numericScale.onAdd = function () {
+            const div = L.DomUtil.create('div', 'leaflet-control');
+            div.id = 'scale-numeric';
+            div.innerHTML = 'Skala: 1:10000';
+            return div;
+        };
+
+        numericScale.addTo(map);
+
+        // Funkcja obliczająca skalę liczbową
+        function updateNumericScale() {
+            const zoom = map.getZoom();
+            const scale = Math.round(40075016.686 / Math.pow(2, zoom + 8)); // Obliczanie skali
+            document.getElementById('scale-numeric').textContent = `Skala: 1:${scale}`;
+        }
+
+        // Aktualizacja skali liczbowej przy zmianie zoomu
+        map.on('zoomend', updateNumericScale);
+
+        // Wywołanie funkcji początkowo
+        updateNumericScale();
+
+        var center = [50.0804724, 19.1614253]; // Współrzędne centrum
+        var bufferRadius = 11 * 1000;
+        var bounds = L.latLng(center).toBounds(bufferRadius);
+        map.fitBounds(bounds);
+
+        function goToAuth() {
+            window.location.href = '/login_panel.html'; // Ścieżka do strony logowania/rejestracji
+        }
+
+        function goToSeismicMap() {
+            window.location.href = '/wstrzasy.html';
+        }
+
+
+        // Funkcja do pobierania lokalizacji użytkownika
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    userLat = position.coords.latitude;
+                    userLng = position.coords.longitude;
+
+                    // Ustawienie współrzędnych w formularzu
+                    document.getElementById('latitude').value = userLat;
+                    document.getElementById('longitude').value = userLng;
+
+                    // Ustawienie mapy na lokalizację użytkownika
+                    map.setView([userLat, userLng], 13);
+
+                    // Dodanie markera w lokalizacji użytkownika
+                    if (marker) {
+                        map.removeLayer(marker);
+                    }
+                    marker = L.marker([userLat, userLng]).addTo(map);
+
+                }, function(error) {
+                    alert('Nie udało się pobrać lokalizacji. Wykorzystuję domyślną lokalizację.');
+                    map.setView(center, 13); // W przypadku błędu, ustawienie domyślnej lokalizacji
+                });
+            } else {
+                alert('Geolokalizacja nie jest wspierana w tej przeglądarce.');
+                map.setView(center, 13); // W przypadku braku geolokalizacji
+            }
+        }
+
+
+        // Dodanie funkcji kliknięcia na mapie
+        map.on('click', function(e) {
+            var lat = e.latlng.lat;
+            var lng = e.latlng.lng;
+
+            // Sprawdź, czy marker już istnieje, i usuń go, jeśli tak
+            if (marker) {
+                map.removeLayer(marker);
+            }
+
+            // Utwórz nowy marker na mapie
+            marker = L.marker([lat, lng]).addTo(map);
+
+            // Wstaw współrzędne do widocznych pól formularza
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+        });
+
+        // Funkcja do generowania kolorów na podstawie właściwości feature
+        function getColor(feature) {
+            // Przykład: kolor na podstawie ID lub innej właściwości
+            const colors = ['#e6194b', '#808080', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+            const id = feature.properties.id || 0; // Właściwość `id` (lub inna unikalna cecha)
+            return colors[id % colors.length]; // Przypisz kolor z tablicy na podstawie modulo
+        }
+
+        
+        // Funkcja do obsługi każdego elementu GeoJSON
+        function onEachFeature(feature, layer) {
+            if (feature.properties && feature.properties.nazwa) {
+                // Dodaj dymek z nazwą kopalni
+                layer.bindTooltip(feature.properties.nazwa, {
+                    permanent: false,  // Tymczasowy dymek
+                    direction: "auto", // Automatyczne dopasowanie pozycji
+                    className: 'kopalnia-tooltip' // Opcjonalna klasa CSS
+                });
+            }
+        }
+
+        // Funkcja, która ładuje plik GeoJSON i dodaje go jako warstwę na mapie
+        async function loadGeoJsonLayer() {
+            try {
+                const response = await fetch('kopalnia/kopalnia_wszystkie.geojson');
+                if (!response.ok) throw new Error(`Błąd HTTP: ${response.status}`);
+                const geojsonData = await response.json();
+
+                // Dodaj warstwę GeoJSON do mapy z obsługą zdarzeń
+                const geoJsonLayer = L.geoJSON(geojsonData, {
+                    onEachFeature: onEachFeature, // Obsługa każdego elementu
+                    style: function (feature) {
+                        return {
+                            color: '#000000', // Obramowanie poligonów
+                            weight: 1,
+                            fillColor: getColor(feature), // Wypełnienie poligonu
+                            fillOpacity: 0.5
+                        };
+                    }
+                }).addTo(map);
+
+                map.fitBounds(geoJsonLayer.getBounds());
+            } catch (error) {
+                console.error("Błąd podczas wczytywania pliku GeoJSON:", error);
+                alert('Nie udało się wczytać pliku GeoJSON.');
+            }
+        }
+
+        // Wywołaj funkcję ładującą po zainicjowaniu mapy
+        loadGeoJsonLayer();
+
+
+        // Pobierz lokalizację użytkownika na początku
+        getUserLocation();
+    </script>
+</body>
+</html>

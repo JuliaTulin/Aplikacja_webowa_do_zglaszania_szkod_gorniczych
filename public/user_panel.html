@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel użytkownika</title>
+    <style>
+        /* Styl ogólny strony */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #ccc;
+        }
+
+        header {
+            background-color: #252625;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: space-around;
+            background-color: #252625;
+            border-radius: 8px;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+            color: white;
+            font-weight: bold;
+            background-color: #333;
+            border: 1px solid #252625;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .tab.active {
+            background-color: #838383;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #252625;
+            color: white;
+        }
+
+        .user-info {
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            text-align: center;
+            margin-top: 50px;
+            color: #333;
+        }
+
+        .user-info p {
+            margin: 5px 0;
+            color: #555;
+        }
+
+        .points-list {
+            margin-top: 20px;
+        }
+
+        .points-list h2 {
+            margin-bottom: 10px;
+        }
+
+        .point {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .point p {
+            margin: 5px 0;
+            color: #555;
+        }
+
+        .logout-button {
+            display: inline-block;
+            padding: 10px 20px;
+            color: white;
+            background-color: #bb5e5a;
+            border: none;
+            border-radius: 5px;
+            text-align: center;
+            text-decoration: none;
+            font-size: 16px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+
+        .logout-button:hover {
+            background-color: #3b3c3b;
+        }
+
+        table {
+            border-collapse: collapse;
+            max-width: 1500px;
+            margin-top: 20px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #252625;
+            color: white;
+        }
+
+        .approve-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .approve-btn:hover {
+            background-color: #218838;
+        }
+
+        .reject-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .reject-btn:hover {
+            background-color: #c82333;
+        }
+
+        /* Kolor nagłówków dla zatwierdzonych szkód */
+        #approved-szkody-table th {
+            background-color: #28a745; /* Zielony */
+            color: white;
+        }
+
+        /* Kolor nagłówków dla odrzuconych szkód */
+        #rejected-szkody-table th {
+            background-color: #dc3545; /* Czerwony */
+            color: white;
+        }
+
+
+    </style>
+</head>
+<body>
+    <header>
+        <h1 id="panel-title">Witaj w Panelu użytkownika</h1>
+    </header>
+
+    <div class="container">
+        <!-- Sekcja informacji o użytkowniku -->
+        <div class="info-o-użytkowniku">
+            <p><strong>Imię:</strong> <span id="imie"></span></p>
+            <p><strong>Nazwisko:</strong> <span id="nazwisko"></span></p>
+            <p><strong>Email:</strong> <span id="email"></span></p>
+        </div>
+
+        <!-- Przycisk wylogowania -->
+        <button id="logout-btn" class="logout-button" onclick="logout()">Wyloguj</button>
+    </div>
+
+    <!-- Sekcja szkód -->
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" data-tab="tab1">Oczekujące zgłoszenia</div>
+            <div class="tab" data-tab="tab2">Zatwierdzone zgłoszenia</div>
+            <div class="tab" data-tab="tab3">Odrzucone zgłoszenia</div>
+        </div>
+
+        <div id="tab1" class="tab-content active">
+            <table id="szkody-table">
+                <thead id="table-head">
+                    <tr>
+                        <th>Opis szkody</th>
+                        <th>Czas utworzenia zgłoszenia</th>
+                        <th>Długość geograficzna</th>
+                        <th>Szerokość geograficzna</th>
+                        <th>Czy na terenie kopalni?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Wiersze zostaną wypełnione dynamicznie -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tab2" class="tab-content">
+            <table id="approved-szkody-table">
+                <thead>
+                    <tr>
+                        <th>Opis szkody</th>
+                        <th>Czas utworzenia zgłoszenia</th>
+                        <th>Długość geograficzna</th>
+                        <th>Szerokość geograficzna</th>
+                        <th>Czy na terenie kopalni?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Wiersze zostaną wypełnione dynamicznie -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="tab3" class="tab-content">
+            <table id="rejected-szkody-table">
+                <thead>
+                    <tr>
+                        <th>Opis szkody</th>
+                        <th>Czas utworzenia zgłoszenia</th>
+                        <th>Długość geograficzna</th>
+                        <th>Szerokość geograficzna</th>
+                        <th>Czy na terenie kopalni?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Wiersze zostaną wypełnione dynamicznie -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+
+
+    <script>
+        // Funkcja do pobierania danych zatwierdzonych szkód
+        function pobierzZatwierdzoneSzkody() {
+            const tableBody = document.querySelector('#approved-szkody-table tbody');
+            if (!tableBody) {
+                console.error('Nie znaleziono elementu tabeli zatwierdzonych zgłoszeń.');
+                return;
+            }
+
+            fetch('/api/zatwierdzone_szkody', { credentials: 'include' })
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak dostępu do zatwierdzonych szkód. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania zatwierdzonych szkód');
+                    }
+                    return response.json();
+                })
+                .then(szkody => {
+                    tableBody.innerHTML = ''; // Wyczyść tabelę przed wypełnieniem
+
+                    szkody.forEach(szkoda => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${szkoda.opis}</td>
+                            <td>${szkoda.czas_utworzenia}</td>
+                            <td>${szkoda.longitude}</td>
+                            <td>${szkoda.latitude}</td>
+                            <td>${szkoda.teren_kopalni}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+        function formatDate(isoDate) {
+            const date = new Date(isoDate);
+            return date.toISOString().slice(0, 16).replace('T', ' ');
+        }
+
+        // Funkcja do pobierania danych odrzuconych szkód
+        function pobierzOdrzuconeSzkody() {
+            fetch('/api/odrzucone_szkody', { credentials: 'include' })
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak dostępu do odrzuconych szkód. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania odrzuconych szkód');
+                    }
+                    return response.json();
+                })
+                .then(szkody => {
+                    const tableBody = document.querySelector('#rejected-szkody-table tbody');
+                    tableBody.innerHTML = ''; // Wyczyść tabelę przed wypełnieniem
+
+                    szkody.forEach(szkoda => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${szkoda.opis}</td>
+                            <td>${formatDate(szkoda.czas_utworzenia)}</td>
+                            <td>${szkoda.longitude}</td>
+                            <td>${szkoda.latitude}</td>
+                            <td>${szkoda.teren_kopalni}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+        // Zaktualizowana funkcja startAplikacji
+        function startAplikacji() {
+            fetch('/api/user', { credentials: 'include' }) 
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak sesji. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania danych użytkownika');
+                    }
+                    return response.json();
+                })
+                .then(userData => {
+                    document.getElementById('imie').textContent = userData.imie || '';
+                    document.getElementById('nazwisko').textContent = userData.nazwisko || '';
+                    document.getElementById('email').textContent = userData.email || '';
+
+                    //const tableHeader = document.getElementById('table-header');
+                    const panelTitle = document.getElementById('panel-title');
+                    panelTitle.textContent = 'Witaj w Panelu użytkownika';
+                    //tableHeader.textContent = 'Twoje zgłoszenia oczekujące na rozpatrzenie';
+                    ustawNaglowekTabeli(false);
+                    pobierzSzkody(); 
+                    pobierzZatwierdzoneSzkody(); // Pobierz zatwierdzone zgłoszenia
+                    pobierzOdrzuconeSzkody();   // Pobierz odrzucone zgłoszenia
+                    
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+
+    // Funkcja do ustawienia nagłówka tabeli
+    function ustawNaglowekTabeli(jestAdmin) {
+        const thead = document.getElementById('table-head');
+        thead.innerHTML = ''; // Wyczyść nagłówki
+
+        // Dodaj odpowiednie kolumny w zależności od roli
+        if (jestAdmin) {
+            thead.innerHTML = `
+                <tr>
+                    <th>Imię</th>
+                    <th>Nazwisko</th>
+                    <th>Email</th>
+                    <th>Opis szkody</th>
+                    <th>Czas utworzenia zgłoszenia</th>
+                    <th>Długość geograficzna</th>
+                    <th>Szerokość geograficzna</th>
+                    <th>Czy na terenie kopalni?</th>
+                    <th> </th>
+                </tr>`;
+        } else {
+            thead.innerHTML = `
+                <tr>
+                    <th>Opis szkody</th>
+                    <th>Czas utworzenia zgłoszenia</th>
+                    <th>Długość geograficzna</th>
+                    <th>Szerokość geograficzna</th>
+                    <th>Czy na terenie kopalni?</th>
+                </tr>`;
+        }
+    }
+
+        // Wylogowanie
+        function logout() {
+            fetch('/api/logout', { method: 'POST', credentials: 'include' }) // Wylogowanie poprzez sesję
+                .then(response => {
+                    if (response.ok) {
+                        window.location.href = 'http://localhost:3000/';
+                    }
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                    alert('Błąd podczas wylogowania.');
+                });
+        }
+
+        function pobierzSzkody() {
+            fetch('/api/szkody', { credentials: 'include' }) // Wysyłamy zapytanie z ciasteczkami sesji
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak dostępu do danych szkód. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania szkód');
+                    }
+                    return response.json();
+                })
+                .then(szkody => {
+                    const tableBody = document.querySelector('#szkody-table tbody');
+                    tableBody.innerHTML = ''; // Wyczyść tabelę przed wypełnieniem
+
+                    // Dodaj wiersze do tabeli
+                    szkody.forEach(szkoda => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${szkoda.opis}</td>
+                            <td>${formatDate(szkoda.czas_utworzenia)}</td>
+                            <td>${szkoda.longitude}</td>
+                            <td>${szkoda.latitude}</td>
+                            <td>${szkoda.teren_kopalni}</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+        function pobierzSzkodyAdmin() {
+            fetch('/admin/szkody', { credentials: 'include' }) // Endpoint dla administratora
+                .then(response => {
+                    if (response.status === 401) {
+                        alert('Brak dostępu do danych szkód. Zaloguj się ponownie.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (response.status === 403) {
+                        alert('Brak uprawnień do przeglądania danych szkód.');
+                        window.location.href = 'http://localhost:3000/';
+                    } else if (!response.ok) {
+                        throw new Error('Błąd podczas pobierania wszystkich szkód');
+                    }
+                    return response.json();
+                })
+                .then(szkody => {
+                    const tableBody = document.querySelector('#szkody-table tbody');
+                    tableBody.innerHTML = ''; // Wyczyść tabelę przed wypełnieniem
+
+                    // Dodaj wiersze do tabeli
+                    szkody.forEach(szkoda => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${szkoda.imie}</td>
+                            <td>${szkoda.nazwisko}</td>
+                            <td>${szkoda.email}</td>
+                            <td>${szkoda.opis}</td>
+                            <td>${formatDate(szkoda.czas_utworzenia)}</td>
+                            <td>${szkoda.longitude}</td>
+                            <td>${szkoda.latitude}</td>
+                            <td>${szkoda.teren_kopalni}</td>
+                            <td>
+                                <button class="approve-btn" data-id="${szkoda.id}">Zatwierdź</button>
+                                <button class="reject-btn" data-id="${szkoda.id}">Odrzuć</button>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+
+                    // Dodaj nasłuchiwanie na przyciski "Zatwierdź"
+                    const approveButtons = document.querySelectorAll('.approve-btn');
+                    approveButtons.forEach(button => {
+                        button.addEventListener('click', function () {
+                            const szkodaId = button.getAttribute('data-id');
+                            zatwierdzSzkode(szkodaId);
+                        });
+                    });
+                    // Nasłuchiwanie na przyciski "Odrzuć"
+                    const rejectButtons = document.querySelectorAll('.reject-btn');
+                    rejectButtons.forEach(button => {
+                        button.addEventListener('click', function () {
+                            const szkodaId = button.getAttribute('data-id');
+                            odrzucSzkode(szkodaId);
+                        });
+                    });
+                })
+                
+                .catch(error => {
+                    console.error('Szczegóły błędu:', error);
+                });
+        }
+
+        // Funkcja do zatwierdzania szkody
+        function zatwierdzSzkode(szkodaId) {
+            fetch(`/admin/szkody/${szkodaId}/zatwierdz`, {
+                method: 'POST',
+                credentials: 'include'
+            })
+            .then(response => {
+                if (response.status === 200) {
+                    alert('Szkoda została zatwierdzona.');
+                    // Odśwież tabelę, aby pokazać zmiany
+                    pobierzSzkodyAdmin();
+                } else {
+                    alert('Błąd podczas zatwierdzania szkody.');
+                }
+            })
+            .catch(error => {
+                console.error('Szczegóły błędu:', error);
+            });
+        }
+
+        // Funkcja do odrzucania szkody (usuwania)
+        function odrzucSzkode(szkodaId) {
+            fetch(`/admin/szkody/${szkodaId}/odrzuc`, {
+                method: 'POST',
+                credentials: 'include'
+            })
+            .then(response => {
+                if (response.status === 200) {
+                    alert('Szkoda została odrzucona.');
+                    // Odśwież tabelę, aby pokazać zmiany
+                    pobierzSzkodyAdmin();
+                } else {
+                    alert('Błąd podczas odrzucania szkody.');
+                }
+            })
+            .catch(error => {
+                console.error('Szczegóły błędu:', error);
+            });
+        }
+
+        // Obsługa zakładek
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+
+
+        // Wywołaj pobranie szkód po załadowaniu strony
+        document.addEventListener('DOMContentLoaded', () => {
+            startAplikacji(); // Pobiera dane użytkownika
+        });
+
+    </script>
+</body>
+</html>
